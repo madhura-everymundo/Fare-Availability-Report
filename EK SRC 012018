@@ -2,13 +2,12 @@ SELECT
   orig,
   dest,
   event_id,
-  event_createdat,
+  event_createdat :: TIMESTAMP,
   price,
-  depdate,
-  retdate,
+  depdate :: DATE,
+  retdate :: DATE,
   total_price_usd,
-  src_created_at,
-  time_diff,
+  src_created_at :: TIMESTAMP,
   row_num
 FROM
   (
@@ -27,11 +26,11 @@ FROM
       price :: FLOAT                                          AS price,
       (src_created_at AT TIME ZONE 'UTC') AT TIME ZONE 'EST'  AS src_created_at,
       (event_createdat AT TIME ZONE 'UTC') AT TIME ZONE 'EST' AS event_createdat,
-      (event_createdat- src_created_at)                       AS time_diff,
+      (src_created_at-event_createdat) :: VARCHAR(20)                    AS time_diff,
       ROW_NUMBER()
       OVER (
         PARTITION BY event_id
-        ORDER BY time_diff )                                  AS row_num
+        ORDER BY (src_created_at-event_createdat) ASC )     AS row_num
     FROM
       (
 
@@ -78,6 +77,6 @@ FROM
             AND retdate = event_ret_date
             )
       )
-    WHERE (event_createdat-src_created_at)>=0
+    WHERE (src_created_at-event_createdat) >= 0
   ) myTable
 WHERE row_num = '1'

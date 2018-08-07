@@ -1,0 +1,88 @@
+    SELECT *
+FROM
+  (SELECT
+     event_airlineCode,
+     event_action,
+     event_category,
+     event_createdat,
+     event_orig,
+     event_dest,
+     event_depDate,
+    event_retDate,
+     event_totalPrice,
+     event_currency,
+     event_totalPriceUSD,
+     event_trackingId,
+     event_fareClass,
+     event_journeyType,
+     event_siteEdition,
+     event_deviceCategory,
+     total_price_usd,
+     src_created_at,
+     (src_created_at AT TIME ZONE 'UTC') AT TIME ZONE 'EST'  AS src_createdatEST,
+     (event_createdat AT TIME ZONE 'UTC') AT TIME ZONE 'EST' AS event_createdatEST,
+     (src_created_at - event_createdat) :: VARCHAR(20)       AS time_diff,
+     ROW_NUMBER()
+     OVER (
+       PARTITION BY event_createdat
+       ORDER BY (src_created_at - event_createdat) ASC )     AS row_num
+   FROM
+     (
+         (SELECT
+            airline_code                                         AS event_airlineCode,
+            event_action,
+            event_category,
+            __createdat                                          AS event_createdat,
+            LEFT(json_extract_path_text(variables, 'route'), 3)  AS event_orig,
+            RIGHT(json_extract_path_text(variables, 'route'), 3) AS event_dest,
+            LEFT(json_extract_path_text(variables, 'date'), 8)   AS event_depDate,
+           RIGHT(json_extract_path_text(variables, 'date'), 8)   AS event_retDate,
+            json_extract_path_text(variables, 'totalPrice')      AS event_totalPrice,
+            json_extract_path_text(variables, 'currency')        AS event_currency,
+            json_extract_path_text(variables, 'totalPriceUSD')   AS event_totalPriceUSD,
+            json_extract_path_text(variables, 'trackingId')      AS event_trackingId,
+            json_extract_path_text(variables, 'fareClass')       AS event_fareClass,
+            json_extract_path_text(variables, 'journeyType')     AS event_journeyType,
+            json_extract_path_text(variables, 'siteEdition')     AS event_siteEdition,
+            json_extract_path_text(variables, 'deviceCategory')  AS event_deviceCategory,
+            COUNT(_id)
+          FROM em_cmp_lib_tracking_001
+          WHERE
+            __createdat >= '2018-07-01'
+            AND airline_code = 'ek'
+            AND json_extract_path_text(variables, 'totalPriceUSD') NOT IN ('n/a', '', ' ', '-1')
+          GROUP BY airline_code, event_action, event_category, __createdat,
+            event_orig, event_dest, event_depDate,event_retDate,
+            event_totalPrice, event_currency, event_totalPriceUSD,
+            event_trackingId, event_fareClass, event_journeyType, event_siteEdition, event_deviceCategory
+          HAVING count(_id) = 1
+         ) ET
+         LEFT JOIN
+         (
+           SELECT
+             airline_code,
+             src_created_at,
+             orig :: VARCHAR(3),
+             dest :: VARCHAR(3),
+             regexp_replace(dep_date :: DATE, '[^0-9\.]+') AS depDate,
+             regexp_replace(ret_date :: DATE, '[^0-9\.]+') AS retDate,
+             total_price_usd
+           FROM em_farenet2_normalized_main_001
+           WHERE
+             __createdat >= '2018-07-01'
+             AND airline_code = 'ek'
+             AND dep_farenet_class IN ('Economy', 'ECONOMY')
+             AND journey = 'Round Trip'
+         ) FN
+           ON (
+           ET.event_airlineCode = FN.airline_code
+           AND ET.event_createdat :: DATE = FN.src_created_at :: DATE
+           AND ET.event_dest = dest
+           AND ET.event_orig = orig
+           AND ET.event_depDate = depDate
+           AND ET.event_retDate= retDate
+           )
+     ) FNunionET
+   WHERE (src_created_at - event_createdat) >= 0
+  ) OutOfWindow
+WHERE row_num = '1'

@@ -1,7 +1,6 @@
 SELECT *
 FROM
   (SELECT
-     _id,
      event_airlineCode,
      event_category,
      event_action,
@@ -31,14 +30,13 @@ FROM
      (src_created_at - event_createdat) :: VARCHAR(20)       AS time_diff,
      ROW_NUMBER()
      OVER (
-       PARTITION BY event_airlineCode,event_category,event_action, event_orig, event_dest,
-     event_depDate,event_retDate,event_totalPrice,event_currency,event_totalPriceUSD,
-     event_trackingId, event_fareClass, event_journeyType,event_siteEdition,event_deviceCategory,time_diff
+       PARTITION BY event_airlineCode, event_category, event_action, event_orig, event_dest,
+         event_depDate, event_retDate, event_totalPrice, event_currency, event_totalPriceUSD,
+         event_trackingId, event_fareClass, event_journeyType, event_siteEdition, event_deviceCategory, event_createdat
        ORDER BY (src_created_at - event_createdat) ASC )     AS row_num
    FROM
      (
          (SELECT
-            _id,
             airline_code                                         AS event_airlineCode,
             event_category,
             event_action,
@@ -59,12 +57,12 @@ FROM
             json_extract_path_text(variables, 'trackingId')      AS event_trackingId,
             json_extract_path_text(variables, 'fareClass')       AS event_fareClass,
             json_extract_path_text(variables, 'siteEdition')     AS event_siteEdition,
-            json_extract_path_text(variables, 'deviceCategory')  AS event_deviceCategory,
+            json_extract_path_text(variables, 'deviceCategory')  AS event_deviceCategory
           FROM em_cmp_lib_tracking_001
           WHERE
-            __createdat >= '2018-07-01'
-            AND airline_code IN ('aav', 'nk','ek')
-          GROUP BY _id,airline_code, event_action, event_category, __createdat,
+            __createdat >= current_date - 60
+            AND airline_code IN ('aav', 'ek', 'nk')
+          GROUP BY airline_code, event_action, event_category, __createdat,
             event_orig, event_dest, event_depDate, event_retDate,
             event_totalPrice, event_currency, event_totalPriceUSD,
             event_trackingId, event_fareClass, event_journeyType, event_siteEdition, event_deviceCategory
@@ -87,13 +85,12 @@ FROM
              ELSE 'Others' END                             AS journey
            FROM public.em_farenet2_normalized_main_001
            WHERE
-             __createdat >= '2018-07-01'
-              AND airline_code IN ('aav','nk','ek')
-           --  AND trackingId NOTNULL
+             __createdat >= current_date - 60
+             AND airline_code IN ('aav', 'ek', 'nk')
            GROUP BY airline_code, trackingid, src_created_at, orig, dest, depDate, retDate, total_price_usd, journey
          ) FN
-           ON  lower(ET.event_airlineCode)= lower(FN.airline_code)
-             AND ET.event_trackingId = FN.trackingId
+           ON lower(ET.event_airlineCode) = lower(FN.airline_code)
+              AND ET.event_trackingId = FN.trackingId
               AND ET.event_orig = FN.orig
               AND ET.event_dest = FN.dest
               AND ET.event_journeyType = FN.journey
@@ -101,6 +98,5 @@ FROM
               AND (ET.event_retDate = FN.retDate
                    OR ET.event_retDate = 'NULL')
 
-     ) ETjoinFN
-  ) KeepsFirstMatch
-WHERE row_num = '1';
+     ) ETjoinFN) KeepsFirstMatch
+WHERE row_num = '1'
